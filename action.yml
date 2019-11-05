@@ -1,0 +1,10 @@
+---
+name: 'bosh-action'
+description: 'Deploy a bosh director inside a container'
+runs:
+  using: 'docker'
+  image: 'Dockerfile'
+inputs:
+  args:
+    description: 'String of additional args for the create-env command'
+    default: ''
