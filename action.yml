@@ -1,10 +1,10 @@
 ---
 name: 'bosh-action'
-description: 'Deploy a bosh director inside a container'
+description: 'Execute a script within a bosh/main-bosh-docker container.'
 runs:
-  using: 'docker'
-  image: 'Dockerfile'
+  using: 'node12'
+  main: main.js
 inputs:
-  args:
-    description: 'String of additional args for the create-env command'
-    default: ''
+  script:
+    required: true
+    description: 'Script from workspace to execute.'
