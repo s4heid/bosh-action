@@ -1,0 +1,31 @@
+---
+name: bosh-action-smoke
+
+releases:
+  - name: bosh-action-smoke
+    version: latest
+
+stemcells:
+  - alias: default
+    os: ((stemcell_os))
+    version: latest
+
+instance_groups:
+  - name: smoke
+    azs:
+      - z1
+    instances: 1
+    jobs:
+      - name: smoke
+        release: bosh-action-smoke
+    lifecycle: errand
+    networks:
+      - name: default
+    stemcell: default
+    vm_type: default
+
+update:
+  canaries: 1
+  max_in_flight: 1
+  canary_watch_time: 1000-30000
+  update_watch_time: 1000-30000

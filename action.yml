@@ -1,10 +1,21 @@
 ---
-name: 'bosh-action'
-description: 'Execute a script within a bosh/main-bosh-docker container.'
-runs:
-  using: 'node12'
-  main: main.js
+name: BOSH Action
+description: Run a workspace script in the official BOSH Docker CPI integration container.
+author: Sebastian Heid
+
 inputs:
   script:
+    description: Path to an executable script in the checked-out workspace.
     required: true
-    description: 'Script from workspace to execute.'
+  image:
+    description: BOSH integration container image to run.
+    required: false
+    default: ghcr.io/cloudfoundry/bosh/docker-cpi:main
+
+runs:
+  using: node24
+  main: main.js
+
+branding:
+  icon: box
+  color: blue

@@ -1,0 +1,6 @@
+---
+final_name: bosh-action-smoke
+blobstore:
+  provider: local
+  options:
+    blobstore_path: /tmp/bosh-action-smoke-blobstore

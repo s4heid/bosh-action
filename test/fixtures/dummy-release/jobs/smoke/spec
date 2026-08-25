@@ -1,0 +1,10 @@
+---
+name: smoke
+description: Verify that a release can be deployed and an errand can run.
+
+packages: []
+
+templates:
+  run.erb: bin/run
+
+properties: {}
