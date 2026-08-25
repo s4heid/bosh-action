@@ -1,0 +1,132 @@
+---
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: SemVer release tag, for example v2.0.0
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Release ${{ inputs.version }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+
+      - name: Validate release
+        id: release
+        env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+
+          if [[ "${GITHUB_REF}" != "refs/heads/${DEFAULT_BRANCH}" ]]; then
+            echo "::error::Releases must run from ${DEFAULT_BRANCH}."
+            exit 1
+          fi
+
+          if [[ ! "${VERSION}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Version must use the form vMAJOR.MINOR.PATCH."
+            exit 1
+          fi
+
+          package_version="$(node -p "require('./package.json').version")"
+          if [[ "${VERSION}" != "v${package_version}" ]]; then
+            echo "::error::${VERSION} does not match package.json version ${package_version}."
+            exit 1
+          fi
+
+          tag_exists=false
+          if tag_commit="$(git rev-list -n 1 "${VERSION}" 2>/dev/null)"; then
+            tag_exists=true
+            if [[ "${tag_commit}" != "${GITHUB_SHA}" ]]; then
+              echo "::error::${VERSION} already points to ${tag_commit}, not ${GITHUB_SHA}."
+              exit 1
+            fi
+          fi
+
+          release_exists=false
+          if gh release view "${VERSION}" >/dev/null 2>&1; then
+            release_exists=true
+          fi
+
+          {
+            echo "version=${VERSION}"
+            echo "major=${VERSION%%.*}"
+            echo "tag-exists=${tag_exists}"
+            echo "release-exists=${release_exists}"
+          } >> "${GITHUB_OUTPUT}"
+
+      - name: Run tests
+        run: npm run check && npm test
+
+      - name: Create GitHub release
+        if: steps.release.outputs.release-exists != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG_EXISTS: ${{ steps.release.outputs.tag-exists }}
+          VERSION: ${{ steps.release.outputs.version }}
+        run: |
+          set -euo pipefail
+          : "${TAG_EXISTS:?TAG_EXISTS is required}"
+          : "${VERSION:?VERSION is required}"
+
+          args=(
+            release create "${VERSION}"
+            --generate-notes
+            --title "${VERSION}"
+          )
+          if [[ "${TAG_EXISTS}" == "true" ]]; then
+            args+=(--verify-tag)
+          else
+            args+=(--target "${GITHUB_SHA}")
+          fi
+
+          gh "${args[@]}"
+
+      - name: Update major version tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MAJOR_TAG: ${{ steps.release.outputs.major }}
+        run: |
+          set -euo pipefail
+
+          if gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${MAJOR_TAG}" \
+            >/dev/null 2>&1; then
+            gh api \
+              --method PATCH \
+              "repos/${GITHUB_REPOSITORY}/git/refs/tags/${MAJOR_TAG}" \
+              -f sha="${GITHUB_SHA}" \
+              -F force=true \
+              >/dev/null
+          else
+            gh api \
+              --method POST \
+              "repos/${GITHUB_REPOSITORY}/git/refs" \
+              -f ref="refs/tags/${MAJOR_TAG}" \
+              -f sha="${GITHUB_SHA}" \
+              >/dev/null
+          fi
+
+          echo "Updated ${MAJOR_TAG} to ${GITHUB_SHA}."

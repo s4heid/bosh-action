@@ -33,7 +33,7 @@ jobs:
         uses: actions/checkout@v7
 
       - name: Run tests against a local BOSH director
-        uses: s4heid/bosh-action@v2
+        uses: s4heid/bosh-action@v1
         with:
           script: ./ci/actions/test.sh
 ```
