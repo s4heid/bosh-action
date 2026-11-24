@@ -10,7 +10,7 @@ inputs:
   image:
     description: BOSH integration container image to run.
     required: false
-    default: ghcr.io/cloudfoundry/bosh/docker-cpi:main
+    default: ghcr.io/cloudfoundry/bosh/docker-cpi@sha256:37b121239d691db644757de1a26e48e3a7839476963161703e6a5b8aef8e081e
 
 runs:
   using: node24

@@ -4,9 +4,9 @@ Run an executable script from a GitHub Actions workspace inside the official
 BOSH Docker CPI integration container. The script can start an ephemeral local
 BOSH director for release integration tests.
 
-The action uses the official
-[`ghcr.io/cloudfoundry/bosh/docker-cpi:main`](https://github.com/cloudfoundry/bosh/pkgs/container/bosh%2Fdocker-cpi)
-image by default. The image is built by the
+By default the action uses the official
+[`ghcr.io/cloudfoundry/bosh/docker-cpi`](https://github.com/cloudfoundry/bosh/pkgs/container/bosh%2Fdocker-cpi)
+image, pinned by digest in [`action.yml`](action.yml). The image is built by the
 [`cloudfoundry/bosh`](https://github.com/cloudfoundry/bosh) project and contains
 the BOSH CLI, Docker CPI dependencies, and the `start-bosh` helper.
 
@@ -30,7 +30,9 @@ jobs:
     timeout-minutes: 60
     steps:
       - name: Check out repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Run tests against a local BOSH director
         uses: s4heid/bosh-action@v1
@@ -38,7 +40,8 @@ jobs:
           script: ./ci/actions/test.sh
 ```
 
-The script must be executable and use a shebang:
+The script must be executable, resolve to a file inside the workspace, and use
+a shebang:
 
 ```bash
 #!/usr/bin/env bash
@@ -62,7 +65,7 @@ write `bosh-env`; older images wrote `env`.
 | Input | Required | Default | Description |
 | --- | --- | --- | --- |
 | `script` | **Yes** | | Executable path in the checked-out workspace. |
-| `image` | No | `ghcr.io/cloudfoundry/bosh/docker-cpi:main` | Container image used for the local BOSH environment. Pin this to a digest when reproducibility is more important than automatic upstream updates. |
+| `image` | No | [Digest pinned in `action.yml`](action.yml) | Container image used for the local BOSH environment. Use a trusted image and prefer a digest over a mutable tag. |
 
 ## Runtime behavior
 
@@ -86,7 +89,7 @@ The action mirrors GitHub's container-action filesystem layout:
 > The action environment is forwarded without embedding unchanged values in the Docker command line. Filesystem paths under mounted runner directories are translated to their container paths. This allows inputs, workflow variables, secrets, and current GitHub runtime variables to work without a hardcoded allowlist. Variables defined by the image itself, such as `PATH`, `JAVA_HOME`, and `GOROOT`, keep their image values so host tool-cache paths do not hide tools installed in the container.
 
 > [!CAUTION]
-> The invoked workspace script runs in a privileged container with every environment variable available to the action step. Treat it with the same trust as arbitrary code running directly on the runner:
+> The selected image and workspace script run in a privileged container with every environment variable available to the action step. Trust both as you would code running directly on the runner:
 >
 > - Do not use this action to execute untrusted pull-request code with secrets or write-enabled tokens.
 > - Keep `GITHUB_TOKEN` permissions at the minimum required by the workflow.
@@ -116,7 +119,10 @@ Unit tests use only Node.js built-ins:
 npm test
 ```
 
-The repository workflow also performs a scheduled end-to-end smoke test. It
+Dependabot updates the workflow action pins. When updating the BOSH image,
+review the upstream `main` image and update its digest in `action.yml`.
+
+The repository workflow also performs an end-to-end smoke test. It
 creates a dummy BOSH release, starts a local Docker CPI director, uploads the
-current upstream stemcell, deploys the release as an errand, runs it, and tears
+stemcell declared by the image, deploys the release as an errand, runs it, and tears
 down both the deployment and director.

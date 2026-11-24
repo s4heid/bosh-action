@@ -66,16 +66,21 @@ function resolveScript(script, workspace, mappings, fsModule = fs) {
     throw new Error(`Script must be located within GITHUB_WORKSPACE: ${script}`);
   }
 
-  let scriptStats;
+  const realWorkspace = fsModule.realpathSync(workspace);
+  let realScript;
   try {
-    scriptStats = fsModule.statSync(hostScript);
+    realScript = fsModule.realpathSync(hostScript);
   } catch (error) {
     if (error && error.code === 'ENOENT') {
       throw new Error(`Script does not exist: ${hostScript}`);
     }
     throw error;
   }
+  if (!isWithinPath(realScript, realWorkspace)) {
+    throw new Error(`Script must be located within GITHUB_WORKSPACE: ${script}`);
+  }
 
+  const scriptStats = fsModule.statSync(realScript);
   if (!scriptStats.isFile()) {
     throw new Error(`Script is not a file: ${hostScript}`);
   }
@@ -83,7 +88,10 @@ function resolveScript(script, workspace, mappings, fsModule = fs) {
     throw new Error(`Script is not executable: ${hostScript}`);
   }
 
-  return translatePath(hostScript, mappings);
+  return translatePath(
+    path.join(workspace, path.relative(realWorkspace, realScript)),
+    mappings,
+  );
 }
 
 function isDockerEnvironmentName(name) {
@@ -189,6 +197,7 @@ function buildDockerInvocation(environment, options = {}) {
     ...environmentArguments,
     '--entrypoint',
     resolveScript(script, workspace, mappings, fsModule),
+    '--',
     image,
   ];
 
@@ -257,7 +266,7 @@ async function inspectImageEnvironment(
   const inspect = async () => {
     const result = await execute(
       'docker',
-      ['image', 'inspect', '--format', '{{json .Config.Env}}', image],
+      ['image', 'inspect', '--format', '{{json .Config.Env}}', '--', image],
       { env: environment, maxBuffer: 1024 * 1024 },
     );
     return parseImageEnvironment(result.stdout);
@@ -266,7 +275,7 @@ async function inspectImageEnvironment(
   try {
     return await inspect();
   } catch (inspectError) {
-    const pullCode = await run('docker', ['pull', image], environment);
+    const pullCode = await run('docker', ['pull', '--', image], environment);
     if (pullCode !== 0) {
       throw new Error(`Could not pull container image ${image} (exit code ${pullCode}).`);
     }

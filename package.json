@@ -4,7 +4,7 @@
   "private": true,
   "description": "Run a workspace script in a local BOSH integration environment.",
   "engines": {
-    "node": ">=24"
+    "node": ">=24.22.3"
   },
   "scripts": {
     "check": "node --check main.js",

@@ -53,7 +53,7 @@ function createActionEnvironment(t) {
       GITHUB_WORKSPACE: workspace,
       GOROOT: '/host/go',
       HOME: '/home/runner',
-      INPUT_IMAGE: 'ghcr.io/cloudfoundry/bosh/docker-cpi:main',
+      INPUT_IMAGE: 'example/custom-bosh:latest',
       INPUT_SCRIPT: './ci/test.sh',
       JAVA_HOME: '/host/java',
       PATH: '/host/tools:/usr/bin',
@@ -96,10 +96,9 @@ test('builds a generic GitHub runner container invocation', (t) => {
     valuesForOption(invocation.args, '--entrypoint')[0],
     '/github/workspace/ci/test.sh',
   );
-  assert.equal(
-    invocation.args.at(-1),
-    'ghcr.io/cloudfoundry/bosh/docker-cpi:main',
-  );
+  assert.deepEqual(invocation.args.slice(-2), [
+    '--', fixture.environment.INPUT_IMAGE,
+  ]);
 
   assert.ok(containerEnvironment.includes('CUSTOM_MULTILINE'));
   assert.ok(!invocation.args.includes('first line\nsecond line'));
@@ -183,11 +182,31 @@ test('rejects missing, non-executable, and escaping workspace scripts', (t) => {
   );
 });
 
+test('requires workspace script symlinks to resolve within the workspace', (t) => {
+  const { workspace, runnerTemp, script } = createActionEnvironment(t);
+  const mappings = [[workspace, '/github/workspace']];
+  const insideLink = path.join(workspace, 'inside.sh');
+  const outsideLink = path.join(workspace, 'outside.sh');
+  const outsideScript = path.join(runnerTemp, 'test.sh');
+  fs.copyFileSync(script, outsideScript);
+  fs.symlinkSync(script, insideLink);
+  fs.symlinkSync(outsideScript, outsideLink);
+
+  assert.equal(
+    resolveScript(insideLink, workspace, mappings),
+    '/github/workspace/ci/test.sh',
+  );
+  assert.throws(
+    () => resolveScript(outsideLink, workspace, mappings),
+    /must be located within GITHUB_WORKSPACE/,
+  );
+});
+
 test('rejects the amd64-only default image on ARM runners', () => {
   assert.throws(
     () =>
       assertSupportedImageArchitecture(
-        'ghcr.io/cloudfoundry/bosh/docker-cpi:main',
+        `ghcr.io/cloudfoundry/bosh/docker-cpi@sha256:${'a'.repeat(64)}`,
         'ARM64',
       ),
     /published only for linux\/amd64/,
@@ -227,9 +246,13 @@ test('parses and loads image-owned environment names', async () => {
   assert.deepEqual([...parseImageEnvironment('null')], []);
 
   const cached = await inspectImageEnvironment('example:cached', {}, {
-    execFileImplementation: async () => ({
-      stdout: '["PATH=/image/bin"]\n',
-    }),
+    execFileImplementation: async (command, args) => {
+      assert.equal(command, 'docker');
+      assert.deepEqual(args, [
+        'image', 'inspect', '--format', '{{json .Config.Env}}', '--', 'example:cached',
+      ]);
+      return { stdout: '["PATH=/image/bin"]\n' };
+    },
     runCommandImplementation: async () => {
       assert.fail('cached image should not be pulled');
     },
@@ -247,7 +270,7 @@ test('parses and loads image-owned environment names', async () => {
     },
     runCommandImplementation: async (command, args) => {
       assert.equal(command, 'docker');
-      assert.deepEqual(args, ['pull', 'example:missing']);
+      assert.deepEqual(args, ['pull', '--', 'example:missing']);
       return 0;
     },
   });
